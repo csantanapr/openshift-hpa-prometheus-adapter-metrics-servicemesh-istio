@@ -113,7 +113,8 @@ oc create cm serving-certs-ca-bundle -n custom-metrics
 oc annotate configmap -n custom-metrics serving-certs-ca-bundle service.beta.openshift.io/inject-cabundle=true
 oc get cm -n custom-metrics serving-certs-ca-bundle -o yaml 
 ```
-Get the username and password from Grafana config map
+
+### Get the username and password from Grafana config map
 ```
 oc get cm -n istio-system istio-grafana -o yaml 
 ```
