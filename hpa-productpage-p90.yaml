@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: productpage-v1
+  namespace: bookinfo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: productpage-v1
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Object
+      object:
+        metric:
+          name: istio_request_duration_seconds_p90
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: productpage
+        target:
+          type: Value
+          value: 150m
