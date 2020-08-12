@@ -1,5 +1,7 @@
-# OpenShift 4.3 HPA using custom metrics from ServiceMesh (Istio) Prometheus
+# OpenShift HPA using custom metrics from ServiceMesh (Istio) Prometheus
 
+
+Tested on OpenShift 4.4 and ServiceMesh Operator 1.1.6
 
 ## Install ServiceMesh
 
@@ -9,7 +11,7 @@ Create `smcp` and `smmr` in `istio-system`
 
 ## Deploy the BookInfo App 
 
-Follow instructions here https://docs.openshift.com/container-platform/4.3/service_mesh/service_mesh_day_two/ossm-example-bookinfo.html
+Follow instructions here https://docs.openshift.com/container-platform/4.4/service_mesh/service_mesh_day_two/ossm-example-bookinfo.html
 
 Here is an example as shortcut:
 
@@ -31,15 +33,15 @@ default   [default bookinfo]
 ```
 Deploy the BooInfo App
 ```
-oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/bookinfo/maistra-1.0/bookinfo.yaml
+oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/istio/maistra-1.1/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
-Deploy the networking for the APp
+Deploy the networking for the App
 ```
-oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/bookinfo/maistra-1.0/bookinfo-gateway.yaml
+oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/istio/maistra-1.1/samples/bookinfo/networking/bookinfo-gateway.yaml
 ```
 Deploy destination rules none mTLS
 ```
-oc apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.1/samples/bookinfo/networking/destination-rule-all.yaml
+oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/istio/maistra-1.1/samples/bookinfo/networking/destination-rule-all.yaml
 ```
 Get the GATEWAYURL
 ```
@@ -99,13 +101,13 @@ There are two metrics we could use to scale out the deployment, requests ops, or
 
 ## Install prometheus-adapter
 
-We are going to follow the OpenShift 4.3 documentation here https://docs.openshift.com/container-platform/4.3/monitoring/exposing-custom-application-metrics-for-autoscaling.html
+We are going to follow the OpenShift 4.4 documentation here https://docs.openshift.com/container-platform/4.4/monitoring/exposing-custom-application-metrics-for-autoscaling.html
 
 instead of using `default` namespace for the custom metrics apiserver we are going to use `custom-metrics`
 
 Create namespace `custom-metrics`
 ```
-oc create ns custom-metrics
+oc new-project custom-metrics
 ```
 Create configmap for CA certs following OpenShift 4.3 documentation here https://docs.openshift.com/container-platform/4.3/authentication/certificates/service-serving-certificate.html#add-service-certificate-configmap_service-serving-certificate
 ```
@@ -122,8 +124,15 @@ Take the values for `basicAuthUser` and `basicAuthPassword`
 Edit the file `deploy/manifests/prometheus-adapter-prometheus-config.yaml`
 Set the user `username` and `password`
 
+### Update the image tag for the Prometheus Adapter
 
-Deploy adapter
+```
+kubectl get -n openshift-monitoring deploy/prometheus-adapter -o jsonpath="{..image}"
+```
+Replace the image url in the file `deploy/manifests/custom-metrics-apiserver-deployment.yaml`
+
+### Deploy Adapter
+
 ```
 oc create -f deploy/manifests/
 ```
@@ -181,7 +190,7 @@ The out should contain the metrics to use in the HPA
 
 Check the values
 ```
-oc get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/services/*/istio_requests_per_second" | jq .
+oc get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/bookinfo/services/*/istio_request_duration_seconds_p90"  | jq .
 ```
 
 Select which hpa to apply
