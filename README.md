@@ -1,13 +1,15 @@
 # OpenShift HPA using custom metrics from ServiceMesh (Istio) Prometheus
 
 
-Tested on OpenShift 4.4 and ServiceMesh Operator 1.1.6
+Tested on OpenShift 4.4 and ServiceMesh Operator 1.1.10
 
 ## Install ServiceMesh
 
 Install the Operator, and deploy control plane to `istio-system`
 
-Create `smcp` and `smmr` in `istio-system`
+Create the ServiceMeshControlPlane `smcp` and the ServiceMeshMemberRoll `smmr` in `istio-system`
+
+Follow directions to install the [Red Hat Service Mesh](https://docs.openshift.com/container-platform/4.4/service_mesh/v1x/preparing-ossm-installation.html)
 
 ## Deploy the BookInfo App 
 
@@ -19,19 +21,19 @@ Create a project/namespace `bookinfo`
 ```
 oc new-project bookinfo
 ```
-Add `bookinfo` to the `smmr`
+Add `bookinfo` to the `smmr`.  The ServiceMeshMemberRoll is the list of projects that are included in the istio service mesh.
 ```
 oc -n istio-system patch --type='json' smmr default -p '[{"op": "add", "path": "/spec/members", "value":["'"bookinfo"'"]}]'
 ```
 Verify
 ```
-oc get smmr -n istio-system
+oc get smmr -n istio-system -o wide
 ``` 
 ```                                            
-NAME      MEMBERS
-default   [default bookinfo]
+NAME      READY   STATUS       AGE   MEMBERS
+default   2/2     Configured   14m   [default bookinfo]
 ```
-Deploy the BooInfo App
+Deploy the BookInfo App
 ```
 oc apply -n bookinfo -f https://raw.githubusercontent.com/Maistra/istio/maistra-1.1/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
@@ -52,7 +54,7 @@ Confirm app is running
 ```
 curl -o /dev/null -s -w "%{http_code}\n" http://$GATEWAY_URL/productpage
 ```
-Verify the Pods have 2 containers each
+Verify the Pods have 2 containers each.  The 2nd container indicates that istio has succesfully injected the Envoy proxy sidecar.
 ```
 oc get pods -n bookinfo
 ```
@@ -60,7 +62,7 @@ oc get pods -n bookinfo
 ## Generate Load against App
 You can use `hey` to generate load
 ```
-hey -z 30m -c 10 http://$GATEWAY_URL/productpage
+hey -z 30m -c 10 -q 1 http://$GATEWAY_URL/productpage
 ```
 
 ## Verify that you can access istio prometheus instance metrics
@@ -72,10 +74,11 @@ open https://$(oc get route -n istio-system prometheus -o jsonpath='{.spec.host}
 
 Here are some metrics queries you can try in prometheus dashboard
 
-To get the success request volumen (ops)
+To get the success request volume (ops)
 ```
 round(sum(irate(istio_requests_total{reporter="destination",destination_service_name="productpage",response_code!~"5.*"}[5m])) by (destination_service_name), 0.001)
 ```
+![request volume graph](images/prometheus-graph-reqvol.png)
 
 To get the success request 90 percentile
 ```
@@ -84,15 +87,21 @@ histogram_quantile(0.90, sum(irate(istio_request_duration_seconds_bucket{reporte
 
 ## Verify that you can access istio grafana instance metrics
 
-Get the route to prometheus and open in your browser
+Get the route to Grafana and open in your browser
 ```
 open https://$(oc get route -n istio-system grafana -o jsonpath='{.spec.host}')
 ```
 
+Open new dashboard in the left menu bar, named Dashboards and the Manage menu item.
+
+![Grafana Manage Dashboard menu](images/grafana-dashboard-manage-menu.png)
+
+Select the Istio Mesh Dashboard.
+
 ## Verify App is being instrumented by Istio Mesh metrics
 
 Configure Istio and validate that Prometheus is working for istio enabled apps.
-In this example we are using the Istio BookInfo example using `bookinfo` namesapce
+In this example we are using the Istio BookInfo example using `bookinfo` namespace
 
 ![](images/bookinfo-grafana.png)
 
@@ -103,13 +112,13 @@ There are two metrics we could use to scale out the deployment, requests ops, or
 
 We are going to follow the OpenShift 4.4 documentation here https://docs.openshift.com/container-platform/4.4/monitoring/exposing-custom-application-metrics-for-autoscaling.html
 
-instead of using `default` namespace for the custom metrics apiserver we are going to use `custom-metrics`
+Instead of using `default` namespace for the custom metrics apiserver we are going to use `custom-metrics`
 
 Create namespace `custom-metrics`
 ```
 oc new-project custom-metrics
 ```
-Create configmap for CA certs following OpenShift 4.3 documentation here https://docs.openshift.com/container-platform/4.3/authentication/certificates/service-serving-certificate.html#add-service-certificate-configmap_service-serving-certificate
+Create configmap for CA certs following OpenShift 4.4 documentation here https://docs.openshift.com/container-platform/4.3/authentication/certificates/service-serving-certificate.html#add-service-certificate-configmap_service-serving-certificate
 ```
 oc create cm serving-certs-ca-bundle -n custom-metrics 
 oc annotate configmap -n custom-metrics serving-certs-ca-bundle service.beta.openshift.io/inject-cabundle=true
@@ -129,7 +138,7 @@ Set the user `username` and `password`
 ```
 kubectl get -n openshift-monitoring deploy/prometheus-adapter -o jsonpath="{..image}"
 ```
-Replace the image url in the file `deploy/manifests/custom-metrics-apiserver-deployment.yaml`
+Replace the .spec.containers.image field in the file `deploy/manifests/custom-metrics-apiserver-deployment.yaml`
 
 ### Deploy Adapter
 
@@ -192,6 +201,7 @@ Check the values
 ```
 oc get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/bookinfo/services/*/istio_request_duration_seconds_p90"  | jq .
 ```
+If no values are generated then ensure the services have load applied by using the 'hey' command above.
 
 Select which hpa to apply
 
@@ -236,3 +246,16 @@ Events:
 
 As you can see in the graph, HPA scaled the productpage service up to 2 replicas, and the response duration went down from 200ms to 90ms
 ![grafana using p90](./images/grafana-p90-hpa.png)
+
+
+### Troubleshooting
+
+The Horizontal Pod Autoscaler(HPA) may display warnings when no load is applied to the services.  Apply load to the services to observe the collection of metrics and have HPA react.
+
+oc describe hpa productpage-v1 -n bookinfo
+```
+...
+Warning  FailedGetObjectMetric         25s (x3 over 54s)  horizontal-pod-autoscaler  unable to get metric istio_request_duration_seconds_p9
+0: Service on bookinfo productpage/unable to fetch metrics from custom metrics API: the server could not find the metric istio_request_durati
+on_seconds_p90 for services productpage
+```
