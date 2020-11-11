@@ -14,7 +14,7 @@ spec:
     - type: Object
       object:
         metric:
-          name: istio_request_duration_seconds_p90
+          name: istio_request_duration_milliseconds_p90
         describedObject:
           apiVersion: v1
           kind: Service

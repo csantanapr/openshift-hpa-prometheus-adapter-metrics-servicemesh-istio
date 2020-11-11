@@ -1,9 +1,10 @@
-# OpenShift HPA using custom metrics from ServiceMesh (Istio) Prometheus
+# OpenShift HPA using custom metrics from Service Mesh (Istio) Prometheus
 
 
-Tested on OpenShift 4.4 and ServiceMesh Operator 1.1.10
+Tested on OpenShift 4.4 and ServiceMesh Operator 2.0.0
+Note: istio telemetry changed in version 2.0.0.  If using Service Mesh 1.x refer to earlier versions of this project.
 
-## Install ServiceMesh
+## Install Service Mesh
 
 Install the Operator, and deploy control plane to `istio-system`
 
@@ -82,7 +83,7 @@ round(sum(irate(istio_requests_total{reporter="destination",destination_service_
 
 To get the success request 90 percentile
 ```
-histogram_quantile(0.90, sum(irate(istio_request_duration_seconds_bucket{reporter="destination",destination_service_name="productpage",response_code!~"5.*"}[1m])) by (le,destination_service_name))
+histogram_quantile(0.90, sum(irate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service_name="productpage",response_code!~"5.*"}[1m])) by (le,destination_service_name))
 ```
 
 ## Verify that you can access istio grafana instance metrics
@@ -176,7 +177,7 @@ The out should contain the metrics to use in the HPA
       ]
     },
     {
-      "name": "namespaces/istio_request_duration_seconds_p90",
+      "name": "namespaces/istio_request_duration_milliseconds_p90",
       "singularName": "",
       "namespaced": false,
       "kind": "MetricValueList",
@@ -185,7 +186,7 @@ The out should contain the metrics to use in the HPA
       ]
     },
     {
-      "name": "services/istio_request_duration_seconds_p90",
+      "name": "services/istio_request_duration_milliseconds_p90",
       "singularName": "",
       "namespaced": true,
       "kind": "MetricValueList",
@@ -199,7 +200,7 @@ The out should contain the metrics to use in the HPA
 
 Check the values
 ```
-oc get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/bookinfo/services/*/istio_request_duration_seconds_p90"  | jq .
+oc get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/bookinfo/services/*/istio_request_duration_milliseconds_p90"  | jq .
 ```
 If no values are generated then ensure the services have load applied by using the 'hey' command above.
 
@@ -210,7 +211,7 @@ To use `istio_requests_per_second`
 oc create -f hpa-productpage-rps.yaml
 ```
 
-To use `istio_request_duration_seconds_p90`
+To use `istio_request_duration_milliseconds_p90`
 ```
 oc create -f hpa-productpage-p90.yaml
 ```
@@ -228,7 +229,7 @@ Annotations:                                                                   <
 CreationTimestamp:                                                             Tue, 07 Apr 2020 21:46:14 -0400
 Reference:                                                                     Deployment/productpage-v1
 Metrics:                                                                       ( current / target )
-  "istio_request_duration_seconds_p90" on Service/productpage (target value):  94m / 190m
+  "istio_request_duration_milliseconds_p90" on Service/productpage (target value):  94m / 190m
 Min replicas:                                                                  1
 Max replicas:                                                                  5
 Deployment pods:                                                               2 current / 2 desired
@@ -236,12 +237,12 @@ Conditions:
   Type            Status  Reason               Message
   ----            ------  ------               -------
   AbleToScale     True    ScaleDownStabilized  recent recommendations were higher than current one, applying the highest recent recommendation
-  ScalingActive   True    ValidMetricFound     the HPA was able to successfully calculate a replica count from Service metric istio_request_duration_seconds_p90
+  ScalingActive   True    ValidMetricFound     the HPA was able to successfully calculate a replica count from Service metric istio_request_duration_milliseconds_p90
   ScalingLimited  False   DesiredWithinRange   the desired count is within the acceptable range
 Events:
   Type    Reason             Age   From                       Message
   ----    ------             ----  ----                       -------
-  Normal  SuccessfulRescale  79s   horizontal-pod-autoscaler  New size: 2; reason: Service metric istio_request_duration_seconds_p90 above target
+  Normal  SuccessfulRescale  79s   horizontal-pod-autoscaler  New size: 2; reason: Service metric istio_request_duration_milliseconds_p90 above target
 ```
 
 As you can see in the graph, HPA scaled the productpage service up to 2 replicas, and the response duration went down from 200ms to 90ms
@@ -255,7 +256,7 @@ The Horizontal Pod Autoscaler(HPA) may display warnings when no load is applied 
 oc describe hpa productpage-v1 -n bookinfo
 ```
 ...
-Warning  FailedGetObjectMetric         25s (x3 over 54s)  horizontal-pod-autoscaler  unable to get metric istio_request_duration_seconds_p9
+Warning  FailedGetObjectMetric         25s (x3 over 54s)  horizontal-pod-autoscaler  unable to get metric istio_request_duration_milliseconds_p9
 0: Service on bookinfo productpage/unable to fetch metrics from custom metrics API: the server could not find the metric istio_request_durati
-on_seconds_p90 for services productpage
+on_milliseconds_p90 for services productpage
 ```
